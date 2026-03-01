@@ -1,0 +1,225 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================
+// AUTH & USERS
+// ========================
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum OnboardingStatus {
+  PENDING
+  IN_PROGRESS
+  APPROVED
+}
+
+model User {
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  passwordHash       String
+  fullName           String
+  phone              String
+  role               Role              @default(USER)
+  licenseType        String?
+  licenseNumber      String?
+  sailingExperience  String?
+  licenseFilePath    String?
+  onboardingStatus   OnboardingStatus  @default(PENDING)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  onboardingProgress OnboardingProgress[]
+  signatures         Signature[]
+  reportsAsPrimary   Report[]          @relation("PrimarySkipper")
+  reportsAsSecondary Report[]          @relation("SecondarySkipper")
+
+  @@map("users")
+}
+
+// ========================
+// ONBOARDING
+// ========================
+
+enum ContentItemType {
+  VIDEO
+  DOCUMENT
+}
+
+model OnboardingContent {
+  id          String          @id @default(cuid())
+  title       String
+  description String?
+  type        ContentItemType
+  url         String
+  order       Int             @default(0)
+  isRequired  Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  progress OnboardingProgress[]
+
+  @@map("onboarding_content")
+}
+
+model OnboardingProgress {
+  id        String    @id @default(cuid())
+  userId    String
+  contentId String
+  completed Boolean   @default(false)
+  viewedAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content OnboardingContent @relation(fields: [contentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contentId])
+  @@map("onboarding_progress")
+}
+
+enum DeclarationType {
+  SAFETY
+  BEHAVIOR
+}
+
+model Signature {
+  id              String          @id @default(cuid())
+  userId          String
+  declarationType DeclarationType
+  signatureImage  String
+  signedAt        DateTime        @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, declarationType])
+  @@map("signatures")
+}
+
+// ========================
+// KNOWLEDGE PORTAL
+// ========================
+
+model KnowledgeCategory {
+  id        String   @id @default(cuid())
+  name      String
+  icon      String?
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items KnowledgeItem[]
+
+  @@map("knowledge_categories")
+}
+
+enum KnowledgeItemType {
+  PDF
+  VIDEO
+  LINK
+}
+
+model KnowledgeItem {
+  id          String            @id @default(cuid())
+  title       String
+  description String?
+  type        KnowledgeItemType
+  url         String
+  categoryId  String
+  order       Int               @default(0)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  category KnowledgeCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  tags     KnowledgeItemTag[]
+
+  @@map("knowledge_items")
+}
+
+model Tag {
+  id   String @id @default(cuid())
+  name String @unique
+
+  items KnowledgeItemTag[]
+
+  @@map("tags")
+}
+
+model KnowledgeItemTag {
+  itemId String
+  tagId  String
+
+  item KnowledgeItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  tag  Tag           @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([itemId, tagId])
+  @@map("knowledge_item_tags")
+}
+
+// ========================
+// ACTIVITY REPORTS
+// ========================
+
+model Team {
+  id   String @id @default(cuid())
+  name String @unique
+
+  reports      Report[]
+  participants Participant[]
+
+  @@map("teams")
+}
+
+model Participant {
+  id     String  @id @default(cuid())
+  name   String
+  teamId String?
+  active Boolean @default(true)
+
+  team    Team?               @relation(fields: [teamId], references: [id])
+  reports ReportParticipant[]
+
+  @@map("participants")
+}
+
+model Report {
+  id                  String   @id @default(cuid())
+  activityNumber      Int      @default(autoincrement())
+  date                DateTime
+  teamId              String
+  primarySkipperId    String
+  secondarySkipperId  String?
+  activityDescription String
+  weatherConditions   String
+  emotionalHandling   String
+  summaryNextSteps    String
+  generalNotes        String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  team             Team                @relation(fields: [teamId], references: [id])
+  primarySkipper   User                @relation("PrimarySkipper", fields: [primarySkipperId], references: [id])
+  secondarySkipper User?               @relation("SecondarySkipper", fields: [secondarySkipperId], references: [id])
+  participants     ReportParticipant[]
+
+  @@map("reports")
+}
+
+model ReportParticipant {
+  reportId      String
+  participantId String
+  present       Boolean @default(true)
+
+  report      Report      @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  participant Participant @relation(fields: [participantId], references: [id])
+
+  @@id([reportId, participantId])
+  @@map("report_participants")
+}
